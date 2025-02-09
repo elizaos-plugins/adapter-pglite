@@ -1,4 +1,4 @@
-// src/index.ts
+// src/client.ts
 import { v4 } from "uuid";
 import {
   elizaLogger,
@@ -262,10 +262,11 @@ var PGLiteDatabaseAdapter = class extends DatabaseAdapter {
   }
   async createMemory(memory, tableName) {
     return this.withDatabase(async () => {
+      var _a, _b, _c;
       elizaLogger.debug("PostgresAdapter createMemory:", {
         memoryId: memory.id,
-        embeddingLength: memory.embedding?.length,
-        contentLength: memory.content?.text?.length
+        embeddingLength: (_a = memory.embedding) == null ? void 0 : _a.length,
+        contentLength: (_c = (_b = memory.content) == null ? void 0 : _b.text) == null ? void 0 : _c.length
       });
       let isUnique = true;
       if (memory.embedding) {
@@ -430,7 +431,7 @@ var PGLiteDatabaseAdapter = class extends DatabaseAdapter {
         );
         elizaLogger.debug("Goal removal attempt:", {
           goalId,
-          removed: result?.affectedRows ?? 0 > 0
+          removed: (result == null ? void 0 : result.affectedRows) ?? 0 > 0
         });
       } catch (error) {
         elizaLogger.error("Failed to remove goal:", {
@@ -479,7 +480,7 @@ var PGLiteDatabaseAdapter = class extends DatabaseAdapter {
           "Room and related data removed successfully:",
           {
             roomId,
-            removed: result?.affectedRows ?? 0 > 0
+            removed: (result == null ? void 0 : result.affectedRows) ?? 0 > 0
           }
         );
       } catch (error) {
@@ -614,12 +615,12 @@ var PGLiteDatabaseAdapter = class extends DatabaseAdapter {
                         SELECT
                             embedding,
                             COALESCE(
-                                content->$2->>$3,
+                                content->>$2,
                                 ''
                             ) as content_text
                         FROM memories
-                        WHERE type = $4
-                        AND content->$2->>$3 IS NOT NULL
+                        WHERE type = $3
+                        AND content->>$2 IS NOT NULL
                     )
                     SELECT
                         embedding,
@@ -631,13 +632,12 @@ var PGLiteDatabaseAdapter = class extends DatabaseAdapter {
                     WHERE levenshtein(
                         $1,
                         content_text
-                    ) <= $6  -- Add threshold check
+                    ) <= $5  -- Add threshold check
                     ORDER BY levenshtein_score
-                    LIMIT $5
+                    LIMIT $4
                 `;
         const { rows } = await this.query(sql, [
           opts.query_input,
-          opts.query_field_name,
           opts.query_field_sub_name,
           opts.query_table_name,
           opts.query_match_count,
@@ -931,13 +931,14 @@ var PGLiteDatabaseAdapter = class extends DatabaseAdapter {
   }
   async getCache(params) {
     return this.withDatabase(async () => {
+      var _a;
       try {
         const sql = `SELECT "value"::TEXT FROM cache WHERE "key" = $1 AND "agentId" = $2`;
         const { rows } = await this.query(sql, [
           params.key,
           params.agentId
         ]);
-        return rows[0]?.value ?? void 0;
+        return ((_a = rows[0]) == null ? void 0 : _a.value) ?? void 0;
       } catch (error) {
         elizaLogger.error("Error fetching cache", {
           error: error instanceof Error ? error.message : String(error),
@@ -1169,9 +1170,29 @@ var PGLiteDatabaseAdapter = class extends DatabaseAdapter {
     }, "clearKnowledge");
   }
 };
-var index_default = PGLiteDatabaseAdapter;
+var pgLiteAdapter = {
+  init: (runtime) => {
+    const PGLITE_DATA_DIR = runtime.getSetting("PGLITE_DATA_DIR");
+    if (PGLITE_DATA_DIR) {
+      elizaLogger.info("Initializing PgLite adapter...");
+      const db = new PGLiteDatabaseAdapter({
+        dataDir: PGLITE_DATA_DIR
+      });
+      return db;
+    } else {
+      throw new Error("PGLITE_DATA_DIR is not set");
+    }
+  }
+};
+
+// src/index.ts
+var pgLite = {
+  name: "pglite",
+  description: "PgLite database adapter plugin",
+  adapters: [pgLiteAdapter]
+};
+var index_default = pgLite;
 export {
-  PGLiteDatabaseAdapter,
   index_default as default
 };
 //# sourceMappingURL=index.js.map
